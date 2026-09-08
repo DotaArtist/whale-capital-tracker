@@ -45,4 +45,6 @@ npx skills add DotaArtist/whale-capital-tracker
 
 ## License
 
-MIT
+**PolyForm Noncommercial 1.0.0**——个人学习、研究、爱好者项目及非营利组织**免费**；任何**商业用途需另行获得授权**，联系：desplode@outlook.com。
+
+> 注：v1.0 早期版本（2026-09-09 前的提交）曾以 MIT 发布，那些历史版本对已获取者仍按 MIT 授权；本协议自此之后的所有版本生效。

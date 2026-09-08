@@ -1,7 +1,7 @@
 ---
 name: whale-capital-tracker
 description: 采集公开市场的资本流向事件记录：大额募资（IPO/增发/可转债/债券）、巨型回购、并购、SPAC/GDR/REITs 等低频大金额且构成重大新闻的资金行为，统一输出为 flows.json 单一 JSON 文档（meta + events）。只使用稳定官方数据源（SEC EDGAR、港交所披露易、沪深交易所公告等）。Use whenever 用户要追踪资本流向、大额融资、巨额回购、大型并购、资金大事件、市场大额动向，或要生成/更新/校验 flows.json——即使只说"最近有什么大钱在动"。
-license: MIT
+license: PolyForm-Noncommercial-1.0.0
 ---
 
 # Whale Capital Flows · 巨鲸资本流向台账
