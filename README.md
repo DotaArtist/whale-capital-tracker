@@ -1,4 +1,4 @@
-# Capital Flow Skills · 全球资本流向采集技能包
+# Whale Capital Tracker · 全球资本流向采集技能包
 
 两个配套的 agent skill：从**官方稳定数据源**采集公开市场资金动向，输出**统一契约的 JSON 数据文件**。
 
@@ -40,8 +40,8 @@ python3 scripts/validate.py flows.json
 ## 安装
 
 ```bash
-npx skills add <owner>/capital-flow-skills@whale-capital-tracker
-npx skills add <owner>/capital-flow-skills@raising-collector
+npx skills add <owner>/whale-capital-tracker@whale-capital-tracker
+npx skills add <owner>/whale-capital-tracker@raising-collector
 ```
 
 ## License
