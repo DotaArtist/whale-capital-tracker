@@ -1,4 +1,4 @@
-# Whale Capital Tracker · 全球资本流向采集技能包
+# Whale Capital Tracker · 全球资本流向 Agent Skill
 
 从**官方稳定数据源**采集公开市场资金动向，输出**统一契约的 JSON 数据文件**的 agent skill。
 
@@ -33,11 +33,14 @@ python3 scripts/validate.py flows.json
 
 实战沉淀的坑与规避（写进代码与文档）：EDGAR FTS 费用表壳页、承销协议样板条款假金额、HKEX gzip 与软限流。
 
+## 使用要求
+
+python3 与 curl（系统自带）；能访问 SEC EDGAR / 港交所披露易的网络。作为 agent skill 安装后，对它说「看看最近有什么大额资金动向」「采集 8 月的巨鲸事件到 flows.json」即可自动触发；脚本亦可独立运行（见上方命令）。
 
 ## 安装
 
 ```bash
-npx skills add <owner>/whale-capital-tracker@whale-capital-tracker
+npx skills add DotaArtist/whale-capital-tracker
 ```
 
 ## License
