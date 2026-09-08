@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""whale-capital-flows 统一采集器（EDGAR + HKEX 双活源；其余源状态上报）
+"""whale-capital-tracker 统一采集器（EDGAR + HKEX 双活源；其余源状态上报）
 
 用法:
   python3 collect.py --from 2026-09-01 --to 2026-09-08 --out flows.json
@@ -21,7 +21,7 @@ import time
 import urllib.parse
 from pathlib import Path
 
-UA = "whale-capital-flows/1.0 (demo@example.com)"
+UA = "whale-capital-tracker/1.0 (demo@example.com)"
 THRESHOLDS = {"ipo": 5, "follow_on": 5, "convertible": 5, "bond": 10, "spac": 3,
               "despac": 20, "gdr": 5, "reits": 3, "buyback": 20, "ma": 50,
               "dividend_special": 20}

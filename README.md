@@ -2,7 +2,7 @@
 
 两个配套的 agent skill：从**官方稳定数据源**采集公开市场资金动向，输出**统一契约的 JSON 数据文件**。
 
-## whale-capital-flows · 巨鲸资本流向台账
+## whale-capital-tracker · 巨鲸资本流向台账
 
 只记大钱：低频、大金额、构成重大新闻的公开市场资金行为（IPO / 增发 / 可转债 / 债券 / SPAC / De-SPAC / GDR / REITs / 回购 / 并购 / 特别分红）。
 
@@ -35,12 +35,12 @@ python3 scripts/validate.py flows.json
 
 ## raising-collector · IPO 明细采集（companion）
 
-采集 IPO 全量明细 → `seed.ipos.jsonl`（一行一司 20 字段：slug 枚举、日期、定价、募资/估值亿美元、首日表现、承销商）。与 whale-capital-flows 共享 region/industry 枚举与汇率口径，两份数据可直接 join。
+采集 IPO 全量明细 → `seed.ipos.jsonl`（一行一司 20 字段：slug 枚举、日期、定价、募资/估值亿美元、首日表现、承销商）。与 whale-capital-tracker 共享 region/industry 枚举与汇率口径，两份数据可直接 join。
 
 ## 安装
 
 ```bash
-npx skills add <owner>/capital-flow-skills@whale-capital-flows
+npx skills add <owner>/capital-flow-skills@whale-capital-tracker
 npx skills add <owner>/capital-flow-skills@raising-collector
 ```
 
