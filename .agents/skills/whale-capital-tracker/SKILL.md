@@ -27,7 +27,7 @@ license: MIT
 6. **校验**：`python3 scripts/validate.py <flows.json>`，修到 0 错误。
 7. **交付**：写出 `flows.json`（含 meta.window 口径）+ 摘要（各类型笔数/金额合计、Top5 大事件、被过滤的小额统计、失败源及原因）。
 
-## 与 raising-collector 的分工（另一独立 skill，未包含在本仓库）
+## 与 raising-collector 的分工
 
 IPO/增发事件两边都可能采集：**明细与状态流转以 raising-collector 的 seed.ipos.jsonl 为准**；本 skill 只记金额过门槛的大额事件（可从 seed.ipos.jsonl 直接筛选生成，不必重新抓取）。回购/并购/债券/SPAC/GDR/REITs 是本 skill 独有范围。
 

@@ -1,6 +1,6 @@
 # Whale Capital Tracker · 全球资本流向采集技能包
 
-两个配套的 agent skill：从**官方稳定数据源**采集公开市场资金动向，输出**统一契约的 JSON 数据文件**。
+从**官方稳定数据源**采集公开市场资金动向，输出**统一契约的 JSON 数据文件**的 agent skill。
 
 ## whale-capital-tracker · 巨鲸资本流向台账
 
@@ -33,15 +33,11 @@ python3 scripts/validate.py flows.json
 
 实战沉淀的坑与规避（写进代码与文档）：EDGAR FTS 费用表壳页、承销协议样板条款假金额、HKEX gzip 与软限流。
 
-## raising-collector · IPO 明细采集（companion）
-
-采集 IPO 全量明细 → `seed.ipos.jsonl`（一行一司 20 字段：slug 枚举、日期、定价、募资/估值亿美元、首日表现、承销商）。与 whale-capital-tracker 共享 region/industry 枚举与汇率口径，两份数据可直接 join。
 
 ## 安装
 
 ```bash
 npx skills add <owner>/whale-capital-tracker@whale-capital-tracker
-npx skills add <owner>/whale-capital-tracker@raising-collector
 ```
 
 ## License
