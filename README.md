@@ -1,6 +1,6 @@
 # Whale Capital Tracker · 全球资本流向 Agent Skill
 
-从**官方稳定数据源**采集公开市场资金动向，输出**统一契约的每日 JSON 数据文件**（`flows.daily.q{查询日期}.e{执行日期}.json`）的 agent skill。
+从**官方稳定数据源**采集公开市场资金动向，输出**统一契约的每日 JSON 数据文件**（`daily-{查询日期 YYYYMMDD}.json`）的 agent skill。
 
 ## whale-capital-tracker · 巨鲸资本流向台账
 
@@ -8,14 +8,14 @@
 
 ```bash
 # 每日采集（默认以日为单位：不带参数 = 采集今天一天）
-python3 scripts/collect.py                    # → flows.daily.q2026-09-09.e2026-09-09.json
+python3 scripts/collect.py                    # → daily-20260909.json
 python3 scripts/collect.py --date 2026-09-08  # 补采指定某一天
 
 # 契约校验
-python3 scripts/validate.py flows.daily.q2026-09-08.e2026-09-09.json
+python3 scripts/validate.py daily-20260908.json
 ```
 
-**输出文件命名**：`flows.daily.q{查询日期}.e{执行日期}.json`（跨日补采窗口 `flows.daily.q{from}-{to}.e{执行日期}.json`），每天一个文件、按日归档，查询日期与执行日期都记录在文件名里。
+**输出文件命名**：`daily-{查询日期 YYYYMMDD}.json`（跨日补采窗口 `daily-{from}-{to}.json`），每天一个文件、按日归档，查询日期记录在文件名里。
 
 产出单一 JSON 文档（13 必填 + 7 可选字段，v1.0 冻结契约）：
 

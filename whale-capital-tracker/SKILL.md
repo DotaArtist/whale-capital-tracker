@@ -1,6 +1,6 @@
 ---
 name: whale-capital-tracker
-description: 采集公开市场的资本流向事件记录：大额募资（IPO/增发/可转债/债券）、巨型回购、并购、SPAC/GDR/REITs 等低频大金额且构成重大新闻的资金行为。默认以日为单位采集，输出 flows.daily.q{查询日期}.e{执行日期}.json（meta + events）。只使用稳定官方数据源（SEC EDGAR、港交所披露易、沪深交易所公告等）。Use whenever 用户要追踪资本流向、大额融资、巨额回购、大型并购、资金大事件、市场大额动向，或要生成/更新/校验每日流向文件——即使只说"最近有什么大钱在动"。
+description: 采集公开市场的资本流向事件记录：大额募资（IPO/增发/可转债/债券）、巨型回购、并购、SPAC/GDR/REITs 等低频大金额且构成重大新闻的资金行为。默认以日为单位采集，输出 daily-{查询日期 YYYYMMDD}.json（如 daily-20260909.json，meta + events）。只使用稳定官方数据源（SEC EDGAR、港交所披露易、沪深交易所公告等）。Use whenever 用户要追踪资本流向、大额融资、巨额回购、大型并购、资金大事件、市场大额动向，或要生成/更新/校验每日流向文件——即使只说"最近有什么大钱在动"。
 license: PolyForm-Noncommercial-1.0.0
 ---
 
@@ -25,7 +25,7 @@ license: PolyForm-Noncommercial-1.0.0
    - **字段极简**：必填 12 个 + 可选 4 个，`direction`/`amount_local`/`is_major` 等可派生字段一律不存（schema.md 有派生规则），校验器会拒绝契约外字段；
    - `news_title` 填官方公告原标题（可翻译为中文并在括号保留英文原题），`source_url` 必须指向官方页面。
 6. **校验**：`python3 scripts/validate.py <产出文件>`，修到 0 错误。
-7. **交付**：**输出文件默认命名 `flows.daily.q{查询日期}.e{执行日期}.json`**（collect.py 已内置该默认值；跨日窗口为 `flows.daily.q{from}-{to}.e{执行日期}.json`；用户显式指定 `--out` 时从其命名）。每天一个文件、按日归档，外加摘要（各类型笔数/金额合计、Top5 大事件、被过滤的小额统计、失败源及原因）。
+7. **交付**：**输出文件默认命名 `daily-{查询日期 YYYYMMDD}.json`**（collect.py 已内置该默认值，如 `daily-20260909.json`；跨日窗口为 `daily-{from}-{to}.json`；用户显式指定 `--out` 时从其命名）。每天一个文件、按日归档，外加摘要（各类型笔数/金额合计、Top5 大事件、被过滤的小额统计、失败源及原因）。
 
 ## 与 raising-collector 的分工（另一独立 skill，未包含在本仓库）
 
@@ -41,8 +41,8 @@ IPO/增发事件两边都可能采集：**明细与状态流转以 raising-colle
 
 用户：「跑一下今天的资本动向」/「最近有什么大钱在动？」
 
-执行：默认单日（今天）`python3 scripts/collect.py` → 输出 `flows.daily.q2026-09-09.e2026-09-09.json` + 管线刷新 → `validate.py` → 摘要：「共 23 笔：IPO 6 笔合计 87 亿$（最大 Circle 11 亿$）、巨型回购 3 笔（最大 Apple 900 亿$ 计划）、并购 2 笔（最大 xx 460 亿$）…已过滤 47 笔小额」
+执行：默认单日（今天）`python3 scripts/collect.py` → 输出 `daily-20260909.json` + 管线刷新 → `validate.py` → 摘要：「共 23 笔：IPO 6 笔合计 87 亿$（最大 Circle 11 亿$）、巨型回购 3 笔（最大 Apple 900 亿$ 计划）、并购 2 笔（最大 xx 460 亿$）…已过滤 47 笔小额」
 
 用户：「补采上周的」（上次已采到上周二）
 
-执行：自上次次日**逐日各跑一个文件**（`--date` 上周三/四/五…），每天产出 `flows.daily.q{该日}.e{执行日}.json`，不合并窗口。
+执行：自上次次日**逐日各跑一个文件**（`--date` 上周三/四/五…），每天产出 `daily-{该日 YYYYMMDD}.json`，不合并窗口。

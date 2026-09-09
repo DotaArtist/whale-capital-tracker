@@ -2,13 +2,13 @@
 """whale-capital-tracker 统一采集器（EDGAR + HKEX 双活源；其余源状态上报）
 
 用法（默认以日为单位：不带参数 = 采集今天一天）:
-  python3 collect.py                                  # 采集今天，输出 flows.daily.q<今天>.e<执行日>.json
-  python3 collect.py --date 2026-09-04                # 采集指定某一天
-  python3 collect.py --from 2026-09-01 --to 2026-09-08 # 跨日窗口（补采），输出按查询窗命名
+  python3 collect.py                                   # 采集今天，输出 daily-20260909.json
+  python3 collect.py --date 2026-09-04                 # 采集指定某一天
+  python3 collect.py --from 2026-09-01 --to 2026-09-08  # 跨日窗口（补采）
   python3 collect.py --out /tmp/today.json --max-per-type 6  # 显式指定输出文件时不用默认命名
 
-输出文件默认命名：flows.daily.q{查询日期}.e{执行日期}.json（单日），
-跨日窗口为 flows.daily.q{from}-{to}.e{执行日期}.json。
+输出文件默认命名：daily-{查询日期 YYYYMMDD}.json（单日，如 daily-20260909.json），
+跨日窗口为 daily-{from}-{to}.json（如 daily-20260908-20260910.json）。
 
 产出符合 schema v1.0 的 flows.json（只入过门槛事件；未过门槛的在摘要中报告）。
 
@@ -247,10 +247,11 @@ def main():
 
     frm = args.frm or args.date or exec_date
     to = args.to or args.date or exec_date
-    q_part = frm if frm == to else f"{frm}-{to}"
-    out = args.out or f"flows.daily.q{q_part}.e{exec_date}.json"
+    c = lambda d: d.replace("-", "")
+    file_part = c(frm) if frm == to else f"{c(frm)}-{c(to)}"
+    out = args.out or f"daily-{file_part}.json"
 
-    log(f"查询日期 {q_part} | 执行日期 {exec_date} | 输出 {out}")
+    log(f"查询日期 {frm if frm == to else frm + ' ~ ' + to} | 执行日期 {exec_date} | 输出 {out}")
     events, rejected = [], []
     for fn, fargs in ((collect_edgar, (frm, to, args.max_per_type, log)),
                       (collect_hkex, (frm, to, log))):
