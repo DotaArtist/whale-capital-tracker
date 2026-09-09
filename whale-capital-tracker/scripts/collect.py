@@ -4,11 +4,12 @@
 用法（默认以日为单位：不带参数 = 采集今天一天）:
   python3 collect.py                                   # 采集今天，输出 daily-20260909.json
   python3 collect.py --date 2026-09-04                 # 采集指定某一天
-  python3 collect.py --from 2026-09-01 --to 2026-09-08  # 跨日窗口（补采）
-  python3 collect.py --out /tmp/today.json --max-per-type 6  # 显式指定输出文件时不用默认命名
+  python3 collect.py --from 2026-09-01 --to 2026-09-08  # 跨日补采：自动按日切分，
+                                                        #   每天一个 daily-YYYYMMDD.json（含空日文件）
+  python3 collect.py --from 2026-09-01 --to 2026-09-08 --out merged.json  # 显式 --out 才合并单文件
 
-输出文件默认命名：daily-{查询日期 YYYYMMDD}.json（单日，如 daily-20260909.json），
-跨日窗口为 daily-{from}-{to}.json（如 daily-20260908-20260910.json）。
+输出文件默认命名：daily-{查询日期 YYYYMMDD}.json（如 daily-20260909.json）；
+跨日窗口按日切分为多个文件（每天一个，日期各自入文件名）。
 
 产出符合 schema v1.0 的 flows.json（只入过门槛事件；未过门槛的在摘要中报告）。
 
@@ -239,7 +240,7 @@ def main():
     ap.add_argument("--date", dest="date", default=None,
                     help="单日查询快捷参数：等价 --from=--to=该日")
     ap.add_argument("--out", default=None,
-                    help="输出文件，默认 flows.daily.q{查询日期}.e{执行日期}.json")
+                    help="输出文件；默认 daily-{查询日期}.json，跨日自动按日切分多文件")
     ap.add_argument("--max-per-type", type=int, default=4)
     ap.add_argument("--regions", default="all")
     args = ap.parse_args()
@@ -247,11 +248,18 @@ def main():
 
     frm = args.frm or args.date or exec_date
     to = args.to or args.date or exec_date
+    if frm > to:
+        log(f"日期区间反了：{frm} > {to}")
+        return 2
     c = lambda d: d.replace("-", "")
-    file_part = c(frm) if frm == to else f"{c(frm)}-{c(to)}"
-    out = args.out or f"daily-{file_part}.json"
+    if args.out:
+        out_desc = args.out
+    elif frm == to:
+        out_desc = f"daily-{c(frm)}.json"
+    else:
+        out_desc = f"daily-{c(frm)}.json … daily-{c(to)}.json（按日切分，每天一个文件）"
 
-    log(f"查询日期 {frm if frm == to else frm + ' ~ ' + to} | 执行日期 {exec_date} | 输出 {out}")
+    log(f"查询日期 {frm if frm == to else frm + ' ~ ' + to} | 执行日期 {exec_date} | 输出 {out_desc}")
     events, rejected = [], []
     for fn, fargs in ((collect_edgar, (frm, to, args.max_per_type, log)),
                       (collect_hkex, (frm, to, log))):
@@ -268,12 +276,42 @@ def main():
             seen.add(e["event_id"])
             dedup.append(e)
     regions = ["all"] if args.regions == "all" else args.regions.split(",")
-    doc = {"meta": {"snapshot_date": to, "window": {"from": frm, "to": to,
-            "regions": regions}, "count": len(dedup)}, "events": dedup}
-    Path(out).write_text(json.dumps(doc, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    log("\n=== 摘要 ===")
-    log(f"入账 {len(dedup)} 条（已写 {out}）；门槛过滤 {len(rejected)} 笔小额")
+    def dump(path, d_from, d_to, evs):
+        doc = {"meta": {"snapshot_date": d_to, "window": {"from": d_from, "to": d_to,
+                "regions": regions}, "count": len(evs)}, "events": evs}
+        Path(path).write_text(json.dumps(doc, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    if args.out or frm == to:
+        out = args.out or f"daily-{c(frm)}.json"
+        dump(out, frm, to, dedup)
+        log("\n=== 摘要 ===")
+        log(f"入账 {len(dedup)} 条（已写 {out}）；门槛过滤 {len(rejected)} 笔小额")
+    else:
+        # 跨日窗口按日切分：整体采集一次，按 announce_date 分桶，每天一个文件（空日也落档）
+        from datetime import date, timedelta
+        d0, d1 = date(*map(int, frm.split("-"))), date(*map(int, to.split("-")))
+        days, dd = [], d0
+        while dd <= d1:
+            days.append(dd.isoformat())
+            dd += timedelta(days=1)
+        by_day = {d: [] for d in days}
+        clamped = 0
+        for e in dedup:
+            d = e.get("announce_date")
+            if d not in by_day:  # 窗口外日期（解析回退等边缘情况）：就近夹到窗口边界日
+                d = min(max(d, frm), to)
+                clamped += 1
+            by_day[d].append(e)
+        log("\n=== 摘要 ===")
+        log(f"入账 {len(dedup)} 条，按日切分 {len(days)} 个文件"
+            f"（空日 {sum(1 for v in by_day.values() if not v)} 个）；门槛过滤 {len(rejected)} 笔小额")
+        for d in days:
+            log(f"  daily-{c(d)}.json  {len(by_day[d])} 条")
+        if clamped:
+            log(f"  注：{clamped} 条公告日期落在窗口外，已就近归入边界日文件")
+        for d in days:
+            dump(f"daily-{c(d)}.json", d, d, by_day[d])
     by = {}
     for e in dedup:
         by.setdefault(e["event_type"], []).append(e)

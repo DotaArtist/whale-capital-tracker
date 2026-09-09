@@ -15,7 +15,7 @@ python3 scripts/collect.py --date 2026-09-08  # 补采指定某一天
 python3 scripts/validate.py daily-20260908.json
 ```
 
-**输出文件命名**：`daily-{查询日期 YYYYMMDD}.json`（跨日补采窗口 `daily-{from}-{to}.json`），每天一个文件、按日归档，查询日期记录在文件名里。
+**输出文件命名**：`daily-{查询日期 YYYYMMDD}.json`，每天一个文件、按日归档，查询日期记录在文件名里；跨日补采窗口**自动按日切分为多个文件**（无事件的空日也落一个 count=0 文件，便于对账），仅显式 `--out` 时合并为单文件。
 
 产出单一 JSON 文档（13 必填 + 7 可选字段，v1.0 冻结契约）：
 

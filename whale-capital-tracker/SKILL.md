@@ -25,7 +25,7 @@ license: PolyForm-Noncommercial-1.0.0
    - **字段极简**：必填 12 个 + 可选 4 个，`direction`/`amount_local`/`is_major` 等可派生字段一律不存（schema.md 有派生规则），校验器会拒绝契约外字段；
    - `news_title` 填官方公告原标题（可翻译为中文并在括号保留英文原题），`source_url` 必须指向官方页面。
 6. **校验**：`python3 scripts/validate.py <产出文件>`，修到 0 错误。
-7. **交付**：**输出文件默认命名 `daily-{查询日期 YYYYMMDD}.json`**（collect.py 已内置该默认值，如 `daily-20260909.json`；跨日窗口为 `daily-{from}-{to}.json`；用户显式指定 `--out` 时从其命名）。每天一个文件、按日归档，外加摘要（各类型笔数/金额合计、Top5 大事件、被过滤的小额统计、失败源及原因）。
+7. **交付**：**输出文件默认命名 `daily-{查询日期 YYYYMMDD}.json`**（collect.py 已内置该默认值，如 `daily-20260909.json`）。跨日窗口由脚本**自动按日切分为多个文件**——每天一个 `daily-{YYYYMMDD}.json`（无事件的空日也落一个 count=0 文件，便于对账）；只有用户显式指定 `--out` 时才合并为单文件。外加摘要（各类型笔数/金额合计、Top5 大事件、被过滤的小额统计、失败源及原因）。
 
 ## 与 raising-collector 的分工（另一独立 skill，未包含在本仓库）
 

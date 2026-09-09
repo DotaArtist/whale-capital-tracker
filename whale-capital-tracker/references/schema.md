@@ -63,7 +63,7 @@
 | `window.regions` | 本次采集地域，region slug 数组；全球填 `["all"]` |
 | `count` | 必须等于 events 长度 |
 
-**输出文件命名约定（文件层，非 JSON 契约；collect.py 已内置默认）**：默认以日为单位，文件名 `daily-{查询日期 YYYYMMDD}.json`（如 `daily-20260909.json`）；跨日补采窗口为 `daily-{from}-{to}.json`（日期同为紧凑格式）；补采多日时按日切分、每天一个文件。`snapshot_date`=查询日期；执行日期只出现在运行日志，不进入文件名与 JSON。
+**输出文件命名约定（文件层，非 JSON 契约；collect.py 已内置默认）**：默认以日为单位，文件名 `daily-{查询日期 YYYYMMDD}.json`（如 `daily-20260909.json`）。跨日补采窗口**按日切分为多个文件**——每天一个 `daily-{YYYYMMDD}.json`（无事件的空日也落一个 count=0 文件）；仅显式 `--out` 时合并为单文件（此时 `window` 写实际覆盖区间）。`snapshot_date`=该文件查询日期；执行日期只出现在运行日志，不进入文件名与 JSON。
 
 ## events 字段
 
