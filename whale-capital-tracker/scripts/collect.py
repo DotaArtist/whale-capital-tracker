@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
 """whale-capital-tracker 统一采集器（EDGAR + HKEX 双活源；其余源状态上报）
 
-用法:
-  python3 collect.py --from 2026-09-01 --to 2026-09-08 --out flows.json
-  python3 collect.py --from 2026-09-04 --to 2026-09-04 --out /tmp/today.json --max-per-type 6
+用法（默认以日为单位：不带参数 = 采集今天一天）:
+  python3 collect.py                                  # 采集今天，输出 flows.daily.q<今天>.e<执行日>.json
+  python3 collect.py --date 2026-09-04                # 采集指定某一天
+  python3 collect.py --from 2026-09-01 --to 2026-09-08 # 跨日窗口（补采），输出按查询窗命名
+  python3 collect.py --out /tmp/today.json --max-per-type 6  # 显式指定输出文件时不用默认命名
+
+输出文件默认命名：flows.daily.q{查询日期}.e{执行日期}.json（单日），
+跨日窗口为 flows.daily.q{from}-{to}.e{执行日期}.json。
 
 产出符合 schema v1.0 的 flows.json（只入过门槛事件；未过门槛的在摘要中报告）。
 
@@ -225,19 +230,30 @@ def collect_hkex(from_d, to_d, log):
 
 
 def main():
+    exec_date = time.strftime("%Y-%m-%d")
     ap = argparse.ArgumentParser()
-    ap.add_argument("--from", dest="frm", required=True)
-    ap.add_argument("--to", dest="to", required=True)
-    ap.add_argument("--out", default="flows.json")
+    ap.add_argument("--from", dest="frm", default=None,
+                    help="查询起始日 yyyy-MM-dd，默认=查询日（以日为单位）")
+    ap.add_argument("--to", dest="to", default=None,
+                    help="查询截止日 yyyy-MM-dd，默认=查询日（以日为单位）")
+    ap.add_argument("--date", dest="date", default=None,
+                    help="单日查询快捷参数：等价 --from=--to=该日")
+    ap.add_argument("--out", default=None,
+                    help="输出文件，默认 flows.daily.q{查询日期}.e{执行日期}.json")
     ap.add_argument("--max-per-type", type=int, default=4)
     ap.add_argument("--regions", default="all")
     args = ap.parse_args()
     log = lambda m: print(m, flush=True)
 
-    log(f"采集窗口 {args.frm} ~ {args.to}")
+    frm = args.frm or args.date or exec_date
+    to = args.to or args.date or exec_date
+    q_part = frm if frm == to else f"{frm}-{to}"
+    out = args.out or f"flows.daily.q{q_part}.e{exec_date}.json"
+
+    log(f"查询日期 {q_part} | 执行日期 {exec_date} | 输出 {out}")
     events, rejected = [], []
-    for fn, fargs in ((collect_edgar, (args.frm, args.to, args.max_per_type, log)),
-                      (collect_hkex, (args.frm, args.to, log))):
+    for fn, fargs in ((collect_edgar, (frm, to, args.max_per_type, log)),
+                      (collect_hkex, (frm, to, log))):
         try:
             ev, rj = fn(*fargs)
             events += ev
@@ -251,12 +267,12 @@ def main():
             seen.add(e["event_id"])
             dedup.append(e)
     regions = ["all"] if args.regions == "all" else args.regions.split(",")
-    doc = {"meta": {"snapshot_date": args.to, "window": {"from": args.frm, "to": args.to,
+    doc = {"meta": {"snapshot_date": to, "window": {"from": frm, "to": to,
             "regions": regions}, "count": len(dedup)}, "events": dedup}
-    Path(args.out).write_text(json.dumps(doc, ensure_ascii=False, indent=2), encoding="utf-8")
+    Path(out).write_text(json.dumps(doc, ensure_ascii=False, indent=2), encoding="utf-8")
 
     log("\n=== 摘要 ===")
-    log(f"入账 {len(dedup)} 条（已写 {args.out}）；门槛过滤 {len(rejected)} 笔小额")
+    log(f"入账 {len(dedup)} 条（已写 {out}）；门槛过滤 {len(rejected)} 笔小额")
     by = {}
     for e in dedup:
         by.setdefault(e["event_type"], []).append(e)
