@@ -10,7 +10,7 @@ EVENT_TYPES = {"ipo", "follow_on", "convertible", "bond", "spac", "despac",
                "gdr", "reits", "buyback", "ma", "dividend_special"}
 STATUSES = {"announced", "priced", "completed", "withdrawn"}
 REGIONS = {"north_america", "hong_kong", "mainland", "japan", "korea",
-           "europe", "middle_east", "india", "apac"}
+           "europe", "middle_east", "india", "apac", "south_america"}
 WINDOW_REGIONS = REGIONS | {"all"}
 INDUSTRIES = {"tech_internet", "semiconductor", "auto_ev", "pharma", "finance",
               "consumer", "manufacturing", "energy_materials", "logistics", "media_telecom"}

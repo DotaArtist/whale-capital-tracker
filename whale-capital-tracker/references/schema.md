@@ -75,7 +75,7 @@
 | `event_type` | enum | `ipo` `follow_on` `convertible` `bond` `spac` `despac` `gdr` `reits` `buyback` `ma` `dividend_special`（特别分红，≥20 亿$） |
 | `name` / `name_en` | string | 主体中英文名 |
 | `market` | string | 发生市场，如 `"纳斯达克"` `"港交所"` |
-| `region` | enum | `north_america` `hong_kong` `mainland` `japan` `korea` `europe` `middle_east` `india` `apac` |
+| `region` | enum | `north_america` `hong_kong` `mainland` `japan` `korea` `europe` `middle_east` `india` `apac` `south_america`（2026-09-26 增补，巴西源启用） |
 | `announce_date` | date | 官方公告日（排序主键） |
 | `status` | enum | `announced`（预备：已递表/已宣布未执行）`priced`（已定价待交割）`completed` `withdrawn` |
 | `amount_usd` | number | **亿美元**——唯一金额字段，采集时折算完毕 |
@@ -138,4 +138,4 @@
 
 ## 汇率折算（→ 亿美元，采集时完成）
 
-`1 USD ≈ 7.8 HKD ≈ 7.2 CNY ≈ 150 JPY ≈ 1350 KRW ≈ 84 INR ≈ 0.92 EUR ≈ 0.79 GBP ≈ 3.75 SAR ≈ 3.67 AED`，保留 1 位小数；无法可靠折算的事件不入账并在摘要说明。
+`1 USD ≈ 7.8 HKD ≈ 7.2 CNY ≈ 150 JPY ≈ 1350 KRW ≈ 84 INR ≈ 0.92 EUR ≈ 0.79 GBP ≈ 3.75 SAR ≈ 3.67 AED ≈ 34 TRY ≈ 32 TWD ≈ 5.4 BRL ≈ 3.7 ILS ≈ 0.88 CHF`（2026-09-26 增补 TRY/TWD/BRL/ILS/CHF，随新源启用），保留 1 位小数；无法可靠折算的事件不入账并在摘要说明。

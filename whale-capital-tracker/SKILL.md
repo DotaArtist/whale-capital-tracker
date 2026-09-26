@@ -1,6 +1,6 @@
 ---
 name: whale-capital-tracker
-description: 采集公开市场的资本流向事件记录：大额募资（IPO/增发/可转债/债券）、巨型回购、并购、SPAC/GDR/REITs 等低频大金额且构成重大新闻的资金行为。默认以日为单位采集，输出 daily-{查询日期 YYYYMMDD}.json（如 daily-20260909.json，meta + events）。只使用稳定官方数据源（SEC EDGAR、港交所披露易、沪深交易所公告等）。Use whenever 用户要追踪资本流向、大额融资、巨额回购、大型并购、资金大事件、市场大额动向，或要生成/更新/校验每日流向文件——即使只说"最近有什么大钱在动"。
+description: 采集公开市场的资本流向事件记录：大额募资（IPO/增发/可转债/债券）、巨型回购、并购、SPAC/GDR/REITs 等低频大金额且构成重大新闻的资金行为。默认以日为单位采集，输出 daily-{查询日期 YYYYMMDD}.json（如 daily-20260909.json，meta + events）。只使用稳定官方数据源（SEC EDGAR、港交所披露易、巨潮、TDnet/EDINET、OpenDART、台湾 MOPS、KAP、TASE、巴西 CVM、SIX 等 11 源，见 sources.md）。Use whenever 用户要追踪资本流向、大额融资、巨额回购、大型并购、资金大事件、市场大额动向，或要生成/更新/校验每日流向文件——即使只说"最近有什么大钱在动"。
 license: PolyForm-Noncommercial-1.0.0
 ---
 
@@ -16,7 +16,7 @@ license: PolyForm-Noncommercial-1.0.0
    - **事件类型**：默认全部十类。
    三要素**必须原样写入产出文件的 `meta.window`**，这是产出自述口径的一部分。
 2. **读源目录**：打开 `references/sources.md`，按**事件类型**找官方渠道——本 skill 只允许列在 sources.md 里的官方源（交易所/监管披露/发行人正式公告），第三方财经媒体**只可用于交叉核对标题，不得作为数据来源**。
-3. **抓取**：首选运行 `python3 scripts/collect.py`（无参数=采集今天一天；`--date <日>` 采指定日；内置 EDGAR+披露易双活源、金额提取、门槛过滤与已知坑规避）；需要细调或新源时手写 curl，带自标识 `User-Agent`，官方源限速串行（≥300ms）；HKEX 连发会软限流（返回空），失败等 ≥1 小时再试。
+3. **抓取**：首选运行 `python3 scripts/collect.py`（无参数=采集今天一天；`--date <日>` 采指定日；`--sources cninfo,mopsov` 只跑指定源；内置 11 源：EDGAR/HKEX/巨潮/TDnet/EDINET/DART/MOPS/KAP/MAYA/CVM/SIX，含金额提取、门槛过滤与已知坑规避）；EDINET/DART 需免费 key（环境变量 `EDINET_KEY`/`OPENDART_KEY`，缺省自动跳过）；需要细调或新源时手写 curl，带自标识 `User-Agent`，官方源限速串行（≥300ms）；HKEX 连发会软限流（返回空），失败等 ≥1 小时再试。
 4. **大额过滤**：打开 `references/thresholds.md`，按事件类型套用金额门槛（或"当期全球前 20"备选资格）。**门槛之下的不写入**，但在摘要里报告"过滤掉 N 笔小额"。在途/预备事件（如 S-1 已递未定价）用**目标募资额**（proposed maximum aggregate offering price）过门槛，note 标注「目标募资」。
 4.5 **管线刷新（每轮必做）**：除当日/窗口内新公告外，**重扫近 90 天的在途事件**（status=announced/priced 且未 completed 的记录），更新其状态与金额——休市日、公告淡日也能产出「预备信息」：IPO 管线（已递表待上市）、待执行回购计划、已宣布未交割并购。摘要单独一行报告「在途 N 条（较上轮 ±X）」。
 5. **标准化**：打开 `references/schema.md` 逐字段映射。三条硬规则：
