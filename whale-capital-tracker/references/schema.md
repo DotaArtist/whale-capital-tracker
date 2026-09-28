@@ -1,4 +1,10 @@
-# flows.json 契约 · 巨鲸资本流向台账（v1.0 定稿 · 2026-09-08）
+# flows.json 契约 · 巨鲸资本流向台账（v2.0 · 2026-09-28）
+
+> **v2.0 变更**（基于 dotaartist v1.0 + 本地词表 `event_types.md` v0.1）：
+> 1. `event_type` 枚举 +8：`funding_round` `fund_close` `strategic_stake` `spin_off` `divestiture` `going_private` `stake_reduction` `jv`（v1 的 11 类冻结不动，见文末映射表）；
+> 2. `meta.flows` 可选宏观快照块（跨境/主权资本流动时间序列，value 允许 null）；
+> 3. 汇率表 +SGD/NOK/SEK。
+> v1.0 文件不加新字段即可继续通过校验（向后兼容）。
 
 **单一 JSON 文档**：顶层 `meta` + `events` 数组，一笔事件一个对象。UTF-8。
 
@@ -62,6 +68,16 @@
 | `window.from` / `window.to` | 本次采集时间窗；用户指定什么就写什么，增量模式写实际覆盖区间 |
 | `window.regions` | 本次采集地域，region slug 数组；全球填 `["all"]` |
 | `count` | 必须等于 events 长度 |
+| `flows` | **v2.0 可选**。宏观资本流动快照数组（`--flows` 生成），元素字段：`series_id`(必填 slug)、`title`(必填)、`url`(必填官方页)、`unit`(可选 str)、`as_of`(可选 yyyy-MM-dd 或 null)、`value`(可选数字或 null——官方页多为 JS 渲染，允许 agent 手工填数)、`note`(可选)。**只记时间序列快照，不生成事件** |
+
+#### flows 登记的序列（sources.md F 节为准）
+
+| series_id | 内容 | 频率 |
+| --- | --- | --- |
+| `us_tic_monthly` | 美联储 TIC 月度跨境证券流动（外资买美股/美债） | 月 |
+| `jp_mof_weekly` | 日本财务省 周度对外/对内证券投资 | 周 |
+| `no_gpfg_holdings` | 挪威 GPFG 全量持仓 | 季 |
+| `cn_samr_simple_cases` | 市监总局经营者集中简易案件公示（并购交割先行指标） | 不定期 |
 
 **输出文件命名约定（文件层，非 JSON 契约；collect.py 已内置默认）**：默认以日为单位，文件名 `daily-{查询日期 YYYYMMDD}.json`（如 `daily-20260909.json`）。跨日补采窗口**按日切分为多个文件**——每天一个 `daily-{YYYYMMDD}.json`（无事件的空日也落一个 count=0 文件）；仅显式 `--out` 时合并为单文件（此时 `window` 写实际覆盖区间）。`snapshot_date`=该文件查询日期；执行日期只出现在运行日志，不进入文件名与 JSON。
 
@@ -72,7 +88,7 @@
 | 字段 | 类型 | 规则 |
 | --- | --- | --- |
 | `event_id` | string | `"{event_type}:{market}:{ticker或name}:{announce_date}"`，全文档唯一，幂等更新锚点 |
-| `event_type` | enum | `ipo` `follow_on` `convertible` `bond` `spac` `despac` `gdr` `reits` `buyback` `ma` `dividend_special`（特别分红，≥20 亿$） |
+| `event_type` | enum | v1 十一类：`ipo` `follow_on` `convertible` `bond` `spac` `despac` `gdr` `reits` `buyback` `ma` `dividend_special`（特别分红，≥20 亿$）；**v2.0 词表新增八类**：`funding_round`（一级市场私募大额轮，Form D 等官方登记源）、`fund_close`（PE/VC 基金募资关闭）、`strategic_stake`（战略入股/少数股权）、`spin_off`（分拆）、`divestiture`（资产剥离）、`going_private`（私有化/退市）、`stake_reduction`（减持/大宗出售）、`jv`（合资设立，不设金额门槛）——判定边界见 `event_types.md` |
 | `name` / `name_en` | string | 主体中英文名 |
 | `market` | string | 发生市场，如 `"纳斯达克"` `"港交所"` |
 | `region` | enum | `north_america` `hong_kong` `mainland` `japan` `korea` `europe` `middle_east` `india` `apac` `south_america`（2026-09-26 增补，巴西源启用） |
@@ -103,14 +119,20 @@
 | ipo / follow_on / convertible / bond / spac / gdr / reits | 实际募资额；在途=目标/注册额度 | 在途标「目标募资」；ATM/回购式=授权额度标「额度」 |
 | buyback | 回购计划授权总额 | 执行进度变化只更新 status |
 | ma / despac | 交易对价（含承担债务须注明） | despac=PIPE+信托合计 |
+| funding_round | **Total Amount Sold（已售金额）优先**；新申报未售时用 Total Offering Amount | 用目标额时标「目标募资」 |
+| fund_close | 基金 final close 规模 | 「目标募资」仅用于 first close |
+| strategic_stake | 入股对价 | — |
+| spin_off / divestiture / going_private | 交易对价/估值 | — |
+| stake_reduction | 减持市值（对价） | — |
+| jv | 合资总出资额；未披露填 0 | 不设门槛，见一条记一条 |
 
 ## status 适用性（校验器强制）
 
 | 状态 | 适用类型 |
 | --- | --- |
-| `announced` | 全部十类 |
-| `priced` | 仅证券发行类（ipo/follow_on/convertible/bond/spac/gdr/reits） |
-| `completed` / `withdrawn` | 全部十类 |
+| `announced` | 全部类型（v1 十一类 + v2 八类） |
+| `priced` | 仅证券发行类（ipo/follow_on/convertible/bond/spac/gdr/reits）——**v2 新增八类均不适用** |
+| `completed` / `withdrawn` | 全部类型 |
 
 ## 双主体模型 · 默认对手方速查表（派生，不入库）
 
@@ -119,14 +141,19 @@
 | event_type | 主体(name) | 默认对手方 |
 | --- | --- | --- |
 | ipo / follow_on / convertible / bond / spac / gdr / reits | 发行人 | **公众及机构投资者** |
+| funding_round / fund_close | 融资公司 / 基金 | **私募投资人 / LP** |
 | buyback | 回购公司 | 卖出股东 |
 | ma / despac | 收购方 | 标的方股东（具体标的记 `counterparty`） |
+| strategic_stake | 入股方 | 出让股东 |
+| spin_off / divestiture / going_private | 主体公司 | 股东 / 买方 |
+| stake_reduction | 减持股东 | 受让方（具名时记 `counterparty`） |
+| jv | 各出资方 | 其余出资方 |
 
 例外：定向增发若有具名对象（如「配售予某主权基金」）→ 该对象存 `counterparty`。
 
 ## 刻意不存的字段（可派生 = 冗余）
 
-- **direction**（募资/返还/重组）：由 event_type 唯一决定——`ipo/follow_on/convertible/bond/spac/gdr/reits`→募资、`buyback`→返还、`ma/despac`→重组，消费方按 event_type 分组即可；
+- **direction**（募资/返还/重组）：由 event_type 唯一决定——`ipo/follow_on/convertible/bond/spac/gdr/reits/funding_round/fund_close/strategic_stake/jv`→募资(inflow)、`buyback/stake_reduction/going_private`→返还(outflow)、`ma/despac/spin_off/divestiture`→重组(consolidation)，消费方按 event_type 分组即可（推导表见 `event_types.md` §3）；
 - **amount_local + currency**：`amount_usd` 是唯一比较口径，要看当地原值查 `source_url`；
 - **is_major**：入账即大额（门槛见 thresholds.md，校验器强制），恒 true 的字段没有信息量。
 
@@ -138,4 +165,19 @@
 
 ## 汇率折算（→ 亿美元，采集时完成）
 
-`1 USD ≈ 7.8 HKD ≈ 7.2 CNY ≈ 150 JPY ≈ 1350 KRW ≈ 84 INR ≈ 0.92 EUR ≈ 0.79 GBP ≈ 3.75 SAR ≈ 3.67 AED ≈ 34 TRY ≈ 32 TWD ≈ 5.4 BRL ≈ 3.7 ILS ≈ 0.88 CHF`（2026-09-26 增补 TRY/TWD/BRL/ILS/CHF，随新源启用），保留 1 位小数；无法可靠折算的事件不入账并在摘要说明。
+`1 USD ≈ 7.8 HKD ≈ 7.2 CNY ≈ 150 JPY ≈ 1350 KRW ≈ 84 INR ≈ 0.92 EUR ≈ 0.79 GBP ≈ 3.75 SAR ≈ 3.67 AED ≈ 34 TRY ≈ 32 TWD ≈ 5.4 BRL ≈ 3.7 ILS ≈ 0.88 CHF ≈ 1.34 SGD ≈ 10.8 NOK ≈ 10.5 SEK`（2026-09-28 增补 SGD/NOK/SEK，备 SGX/Oslo 接入），保留 1 位小数；无法可靠折算的事件不入账并在摘要说明。
+
+## v1 类型 ↔ 词表类型映射（event_types.md v0.1）
+
+| v1（本契约枚举） | 词表（21 类，未来目标分类法） |
+| --- | --- |
+| follow_on | seo（公开再融资）/ private_placement（定向增发） |
+| convertible | convertible_bond |
+| bond | bond_issuance |
+| spac / despac | spac（用 stage 区分募资与合并） |
+| gdr | dual_listing |
+| dividend_special | （词表未设——保留 v1） |
+| reits | （词表未设——保留 v1） |
+| funding_round 等 v2 八类 | 与词表同名同义 |
+
+> 采集器输出仍用 v1 枚举（零改动）；词表为 21 类封顶的目标分类法，整体迁移待 v3 决策。
