@@ -1,24 +1,28 @@
 ---
 name: whale-capital-tracker
-description: 采集公开市场的资本流向事件记录：大额募资（IPO/增发/可转债/债券）、巨型回购、并购、SPAC/GDR/REITs 等低频大金额且构成重大新闻的资金行为。默认以日为单位采集，输出 daily-{查询日期 YYYYMMDD}.json（如 daily-20260909.json，meta + events）。只使用稳定官方数据源（SEC EDGAR、港交所披露易、巨潮、TDnet/EDINET、OpenDART、台湾 MOPS、KAP、TASE、巴西 CVM、SIX 等 11 源，见 sources.md）。Use whenever 用户要追踪资本流向、大额融资、巨额回购、大型并购、资金大事件、市场大额动向，或要生成/更新/校验每日流向文件——即使只说"最近有什么大钱在动"。
+description: 采集全球资本流向事件记录：大额募资（IPO/增发/可转债/债券）、巨型回购、并购、SPAC/GDR/REITs、一级市场大额融资轮（SEC Form D，funding_round ≥2亿$）、基金募资/战略入股/分拆/私有化（词表新八类）等低频大金额且构成重大新闻的资金行为，另可选输出宏观资本流动快照（TIC/MOF/NBIM/SAMR，meta.flows）。默认以日为单位采集，输出 daily-{查询日期 YYYYMMDD}.json（如 daily-20260928.json，meta + events）。只使用稳定官方数据源（SEC EDGAR、SEC Form D、港交所披露易、巨潮、TDnet/EDINET、OpenDART、台湾 MOPS、KAP、TASE、巴西 CVM、SIX 等 12 源，见 sources.md）。Use whenever 用户要追踪资本流向、大额融资、巨额回购、大型并购、一级市场大额轮、资金大事件、市场大额动向，或要生成/更新/校验每日流向文件——即使只说"最近有什么大钱在动"。
 license: PolyForm-Noncommercial-1.0.0
 ---
 
-# Whale Capital Flows · 巨鲸资本流向台账
+# Whale Capital Flows · 巨鲸资本流向台账（v2.0 · 2026-09-28）
 
-一句话：**只记大钱**。低频、大金额、构成重大新闻的公开市场资金行为，一笔一条记录，统一格式，官方来源。
+> v2.0 基于 dotaartist/whale-capital-tracker v1 + 本地 `references/event_types.md` 词表 v0.1 扩展：
+> 新增源 SEC Form D（美国一级市场官方全量）、宏观 flows 快照层、词表八类新事件类型。
+
+一句话：**只记大钱**。低频、大金额、构成重大新闻的公开市场与一级市场资金行为，一笔一条记录，统一格式，官方来源。
 
 ## 工作流（按序执行）
 
 1. **确认范围（三要素，用户不指定就用默认并明说）**：
    - **地域**：region slug 或 `"all"`（默认全球）——来源按地域选（见 sources.md 分节）；
    - **时间窗**：**默认以日为单位**——查询日期默认=执行当日（单日窗口 `from`=`to`=该日）；补采多日时**按日切分、每天一个文件**（自上次最大查询日期次日起逐日生成），不要合并成一个大窗口；
-   - **事件类型**：默认全部十类。
+   - **事件类型**：默认全部十九类（v1 十一类 + v2 词表八类）。
    三要素**必须原样写入产出文件的 `meta.window`**，这是产出自述口径的一部分。
-2. **读源目录**：打开 `references/sources.md`，按**事件类型**找官方渠道——本 skill 只允许列在 sources.md 里的官方源（交易所/监管披露/发行人正式公告），第三方财经媒体**只可用于交叉核对标题，不得作为数据来源**。
-3. **抓取**：首选运行 `python3 scripts/collect.py`（无参数=采集今天一天；`--date <日>` 采指定日；`--sources cninfo,mopsov` 只跑指定源；内置 11 源：EDGAR/HKEX/巨潮/TDnet/EDINET/DART/MOPS/KAP/MAYA/CVM/SIX，含金额提取、门槛过滤与已知坑规避）；EDINET/DART 需免费 key（环境变量 `EDINET_KEY`/`OPENDART_KEY`，缺省自动跳过）；需要细调或新源时手写 curl，带自标识 `User-Agent`，官方源限速串行（≥300ms）；HKEX 连发会软限流（返回空），失败等 ≥1 小时再试。
-4. **大额过滤**：打开 `references/thresholds.md`，按事件类型套用金额门槛（或"当期全球前 20"备选资格）。**门槛之下的不写入**，但在摘要里报告"过滤掉 N 笔小额"。在途/预备事件（如 S-1 已递未定价）用**目标募资额**（proposed maximum aggregate offering price）过门槛，note 标注「目标募资」。
+2. **读源目录**：打开 `references/sources.md`，按**事件类型**找官方渠道——本 skill 只允许列在 sources.md 里的官方源（交易所/监管披露/发行人正式公告），第三方财经媒体**只可用于交叉核对标题，不得作为数据来源**；事件判定边界查 `references/event_types.md`（21 类词表，v2 契约先纳其中八类）。
+3. **抓取**：首选运行 `python3 scripts/collect.py`（无参数=采集今天一天；`--date <日>` 采指定日；`--sources cninfo,mopsov` 只跑指定源；`--flows` 附宏观快照；内置 12 源：EDGAR/HKEX/巨潮/TDnet/EDINET/DART/MOPS/KAP/MAYA/CVM/SIX/**FormD**，含金额提取、门槛过滤与已知坑规避）；EDINET/DART 需免费 key（环境变量 `EDINET_KEY`/`OPENDART_KEY`，缺省自动跳过）；需要细调或新源时手写 curl，带自标识 `User-Agent`，官方源限速串行（≥300ms）；HKEX 连发会软限流（返回空），失败等 ≥1 小时再试。**Form D 发现路径只能走 daily-index master.idx**（FTS 不索引 Form D），部分出口对 daily-index 返回 AccessDenied——脚本会提示并跳过，换出口即可。
+4. **大额过滤**：打开 `references/thresholds.md`，按事件类型套用金额门槛（或"当期全球前 20"备选资格）。**门槛之下的不写入**，但在摘要里报告"过滤掉 N 笔小额"。在途/预备事件（如 S-1 已递未定价）用**目标募资额**（proposed maximum aggregate offering price）过门槛，note 标注「目标募资」；funding_round 优先 Total Amount Sold（已售金额），未售新申报用 Total Offering Amount 并标「目标募资」。
 4.5 **管线刷新（每轮必做）**：除当日/窗口内新公告外，**重扫近 90 天的在途事件**（status=announced/priced 且未 completed 的记录），更新其状态与金额——休市日、公告淡日也能产出「预备信息」：IPO 管线（已递表待上市）、待执行回购计划、已宣布未交割并购。摘要单独一行报告「在途 N 条（较上轮 ±X）」。
+4.7 **宏观 flows 快照（用户要宏观动向或加 `--flows` 时）**：脚本已登记 TIC/MOF/NBIM/SAMR 四序列并探测可达性（meta.flows，value=null）；**agent 按 sources.md F 节逐序列人工核对官方页后填入 `as_of` 与 `value`**，note 记口径。宏观层只进 flows 快照，不生成事件。
 5. **标准化**：打开 `references/schema.md` 逐字段映射。三条硬规则：
    - 金额统一折算**亿美元**写入 `amount_usd`（唯一金额字段）；
    - `event_id` 按规则生成（type:market:ticker/name:announce_date），保证幂等——重复采集同事件是**更新**而不是新增；
@@ -33,9 +37,11 @@ IPO/增发事件两边都可能采集：**明细与状态流转以 raising-colle
 
 ## 范围边界
 
-- 只覆盖**公开市场**：PE/VC 基金募集、私有公司融资不采集。
-- 高频微额流量（tick 级资金流、日内南北向明细）不采集——那是行情 skill 的事。
-- 资金面**指标**（VIX、利差、美元指数）不采集——本 skill 只记事件，不记环境。
+- **公开市场全覆盖**（v1 范围）+ **一级市场大额公司融资**（v2 新增）：`funding_round` ≥2亿$（Form D 官方源）、`fund_close` ≥2亿$（基金 final close）、`strategic_stake` ≥2亿$；小额私募轮、天使/A 轮不采集。
+- 结构性重组事件（词表）：`spin_off`/`divestiture`/`going_private` ≥5亿$、`stake_reduction` ≥1亿$、`jv` 不设门槛。
+- 宏观与跨境资本流动（TIC/央行/主权持仓）只进 `meta.flows` 快照，不生成事件；高频微额流量（tick 级资金流、日内南北向明细）不采集——那是行情 skill 的事。
+- 资金面**指标**（VIX、利差、美元指数）不采集——本 skill 只记事件与官方流量，不记环境。
+- 待接入（sources.md 二类）：SGX（GraphQL 持久化查询待逆向）、Oslo NewsWeb（API 域待解析）、ESAP（2027-07）。
 
 ## 快速示例
 
