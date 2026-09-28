@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
-"""flows.json 契约校验器。用法：python3 validate.py <flows.json> [--allow-demo]
---allow-demo: 允许低于门槛的条目，但 note 必须含「演示样本」标记（测试格式用）。"""
+"""flows.json 契约校验器 v2.0。用法：python3 validate.py <flows.json> [--allow-demo]
+--allow-demo: 允许低于门槛的条目，但 note 必须含「演示样本」标记（测试格式用）。
+v2.0（2026-09-28）：事件类型 +8（词表 event_types.md）；meta.flows 可选宏观快照块。"""
 import json
 import re
 import sys
 from pathlib import Path
 
 EVENT_TYPES = {"ipo", "follow_on", "convertible", "bond", "spac", "despac",
-               "gdr", "reits", "buyback", "ma", "dividend_special"}
+               "gdr", "reits", "buyback", "ma", "dividend_special",
+               # v2.0 词表新增（event_types.md v0.1）
+               "funding_round", "fund_close", "strategic_stake", "spin_off",
+               "divestiture", "going_private", "stake_reduction", "jv"}
+PRICED_OK = {"ipo", "follow_on", "convertible", "bond", "spac", "gdr", "reits"}
 STATUSES = {"announced", "priced", "completed", "withdrawn"}
 REGIONS = {"north_america", "hong_kong", "mainland", "japan", "korea",
            "europe", "middle_east", "india", "apac", "south_america"}
@@ -21,7 +26,12 @@ OPTIONAL = {"ticker", "industry", "settle_date", "counterparty", "is_china_conce
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 THRESHOLDS = {"ipo": 5, "follow_on": 5, "convertible": 5, "bond": 10, "spac": 3,
               "despac": 20, "gdr": 5, "reits": 3, "buyback": 20, "ma": 50,
-              "dividend_special": 20}
+              "dividend_special": 20,
+              # v2.0 词表新增（与 event_types.md §5 对齐；jv 不设门槛）
+              "funding_round": 2, "fund_close": 2, "strategic_stake": 2,
+              "spin_off": 5, "divestiture": 5, "going_private": 5,
+              "stake_reduction": 1, "jv": 0}
+FLOWS_REQUIRED = ("series_id", "title", "url")
 TOP20_HINT = ("前20", "top 20", "Top 20")
 
 
@@ -45,7 +55,7 @@ def check_event(rec, idx, errors, seen_ids, allow_demo=False):
     status = rec.get("status")
     if status not in STATUSES:
         fail(errors, where, f"status 非法: {status!r}")
-    if status == "priced" and et in {"buyback", "ma", "despac", "dividend_special"}:
+    if status == "priced" and et not in PRICED_OK:
         fail(errors, where, f"{et} 不适用 priced 态（证券发行类专属）")
     if rec.get("region") not in REGIONS:
         fail(errors, where, f"region 非法: {rec.get('region')!r}")
@@ -116,6 +126,29 @@ def main():
         fail(errors, "meta.window", f"regions 缺失或含非法 slug: {regions!r}")
     if meta.get("count") != len(events):
         fail(errors, "meta", f"count={meta.get('count')!r} 与 events 长度 {len(events)} 不一致")
+
+    flows = meta.get("flows")  # v2.0 可选宏观快照块
+    if flows is not None:
+        if not isinstance(flows, list):
+            fail(errors, "meta.flows", "flows 应为数组（宏观快照，可整体省略）")
+        else:
+            for i, f in enumerate(flows):
+                where = f"meta.flows[{i}]"
+                if not isinstance(f, dict):
+                    fail(errors, where, "应为对象")
+                    continue
+                for k in FLOWS_REQUIRED:
+                    if not isinstance(f.get(k), str) or not f.get(k):
+                        fail(errors, where, f"{k} 缺失或非字符串")
+                v = f.get("value")
+                if v is not None and not isinstance(v, (int, float)) or isinstance(v, bool):
+                    fail(errors, where, f"value 应为数字或 null: {v!r}")
+                a = f.get("as_of")
+                if a is not None and not DATE_RE.match(str(a)):
+                    fail(errors, where, f"as_of 应为 yyyy-MM-dd 或 null: {a!r}")
+                unknown = set(f) - set(FLOWS_REQUIRED) - {"unit", "as_of", "value", "note"}
+                if unknown:
+                    fail(errors, where, f"契约外字段（禁止发明字段）: {sorted(unknown)}")
 
     seen_ids = set()
     for i, rec in enumerate(events):
