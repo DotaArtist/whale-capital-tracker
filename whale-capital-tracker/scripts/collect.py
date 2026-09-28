@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""whale-capital-tracker 统一采集器（11 源：EDGAR/HKEX/巨潮/TDnet/EDINET/DART/MOPS/KAP/MAYA/CVM/SIX）
+"""whale-capital-tracker 统一采集器 v2.0（12 源：EDGAR/HKEX/巨潮/TDnet/EDINET/DART/MOPS/KAP/MAYA/CVM/SIX/FormD）
+
+v2.0（2026-09-28）基于 dotaartist/whale-capital-tracker v1 + 本地 event_types.md 词表 v0.1 扩展：
+- 新增源 collect_formd：SEC EDGAR daily-index → Form D/D-A 私募申报 → funding_round（一级市场大额融资）
+- 新增 --flows：宏观资本流动快照（TIC/MOF/NBIM/SAMR 可达性探测，数值由 agent 按 sources.md F 节手工填）
+- 新增事件类型（词表）：funding_round/fund_close/strategic_stake/spin_off/divestiture/going_private/stake_reduction/jv
 
 用法（默认以日为单位：不带参数 = 采集今天一天）:
   python3 collect.py                                   # 采集今天，输出 daily-20260909.json
@@ -8,16 +13,19 @@
                                                         #   每天一个 daily-YYYYMMDD.json（含空日文件）
   python3 collect.py --from 2026-09-01 --to 2026-09-08 --out merged.json  # 显式 --out 才合并单文件
   python3 collect.py --sources cninfo,mopsov --date 2026-09-24  # 只跑指定源（逗号分隔）
+  python3 collect.py --flows --date 2026-09-28         # 附带宏观 flows 快照（meta.flows）
 
 输出文件默认命名：daily-{查询日期 YYYYMMDD}.json（如 daily-20260909.json）；
 跨日窗口按日切分为多个文件（每天一个，日期各自入文件名）。
 
-产出符合 schema v1.0 的 flows.json（只入过门槛事件；未过门槛的在摘要中报告）。
+产出符合 schema v2.0 的 flows.json（只入过门槛事件；未过门槛的在摘要中报告）。
 
 已知坑（详见 references/sources.md）：
 - EDGAR FTS 的 _id 常指向费用表壳页（<20KB），真金额在同名公司后续的大主文件——
   本脚本按公司遍历多个 accession，跳过小文件。
 - HKEX 对连发请求软限流（返回空/非 JSON），建议单轮间隔 ≥60s，失败等 1 小时再试。
+- Form D：EDGAR 全文检索（FTS）不索引 Form D（实测 2026-09-28），必须走 daily-index master.idx；
+  部分出口对 daily-index 返回 S3 AccessDenied——collect_formd 打印提示并跳过，其余源不受影响。
 
 带 key 的源（均免费申请，详见 references/sources.md）：
   EDINET_KEY（api.edinet-fsa.go.jp，注册+MFA）、OPENDART_KEY（opendart.fss.or.kr）
@@ -27,6 +35,8 @@
 - TDnet 列表页仅当日（31 天滚动窗口），历史补采不支持——务必每日跑。
 - MOPS 日期参数是 b_date/e_date（不是 day），年份为民国纪年（西元-1911）；主域拦海外，走 mopsov 镜像。
 - TASE/MAYA 需旧版 IE UA + referer 过 WAF；报告端点待逆向，本轮只报实体 API 健康度。
+- SGX api2 为 GraphQL 持久化查询（queryId 在懒加载 chunk）；Oslo NewsWeb 已迁
+  obns-api.dev.euronext.cloud（本出口 NXDOMAIN）——两者待逆向，详见 sources.md 二类。
 """
 import argparse
 import json
@@ -40,14 +50,19 @@ from datetime import datetime, timedelta
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 
-UA = "whale-capital-tracker/1.0 (demo@example.com)"
+UA = "whale-capital-tracker/2.0 (demo@example.com)"
 THRESHOLDS = {"ipo": 5, "follow_on": 5, "convertible": 5, "bond": 10, "spac": 3,
               "despac": 20, "gdr": 5, "reits": 3, "buyback": 20, "ma": 50,
-              "dividend_special": 20}
+              "dividend_special": 20,
+              # v2.0 词表新增类型（门槛与 event_types.md §5 对齐，亿美元）
+              "funding_round": 2, "fund_close": 2, "strategic_stake": 2,
+              "spin_off": 5, "divestiture": 5, "going_private": 5,
+              "stake_reduction": 1, "jv": 0}
 HKD_PER_USD = 7.8
 # 1 USD 兑当地币（采集时折算 → 亿美元；与 references/schema.md 汇率表同步维护）
 FX_PER_USD = {"CNY": 7.2, "JPY": 150, "KRW": 1350, "TWD": 32, "TRY": 34,
-              "BRL": 5.4, "ILS": 3.7, "CHF": 0.88}
+              "BRL": 5.4, "ILS": 3.7, "CHF": 0.88,
+              "SGD": 1.34, "NOK": 10.8, "SEK": 10.5}
 
 SOURCE_STATUS = {
     "SEC EDGAR(美)": "active", "HKEX 披露易(港)": "active(限流敏感)",
@@ -55,14 +70,21 @@ SOURCE_STATUS = {
     "EDINET(日)": "active(需EDINET_KEY,管线候选)", "OpenDART(韩)": "active(需OPENDART_KEY,管线候选)",
     "MOPS mopsov(台)": "active(民国年/b_date)", "KAP(土)": "active(公司级已验,全市场参数待调)",
     "TASE/MAYA(以)": "实体API通(报告端点待逆向)", "CVM(巴西)": "active(批量CSV,登记滞后:2026至今仅3条)",
-    "SER/SIX(瑞)": "active(RSS)", "SSE直连(沪)": "备用校验源(需Referer)", "深交所(深)": "50x",
+    "SER/SIX(瑞)": "active(RSS)",
+    "SEC FormD(美一级)": "v2新增(daily-index;FTS不索引D;部分出口AccessDenied)",
+    "SSE直连(沪)": "备用校验源(需Referer)", "深交所(深)": "50x",
     "AMF(法)": "本出口TCP被拦(ODS API有据)", "LSE/Euronext/ASX/IDX/BSE/Tadawul": "反爬/SPA",
+    "SGX(新加坡)": "GraphQL持久化query待逆向(2026-09-28)",
+    "Oslo NewsWeb(挪)": "已迁obns-api.dev.euronext.cloud(本出口NXDOMAIN,待逆向)",
     "SEDAR+(加)": "ToS禁自动采集", "ESAP(欧盟聚合)": "2027-07 观察",
+    "宏观flows(TIC/MOF/NBIM/SAMR)": "--flows探测+agent手工填数(sources.md F节)",
 }
 
 
-def curl(url, headers=None, timeout=20, data=None, json_body=None):
+def curl(url, headers=None, timeout=20, data=None, json_body=None, redir=False):
     cmd = ["curl", "-s", "--max-time", str(timeout), "--compressed"]
+    if redir:
+        cmd.append("-L")
     if not any(h.lower().startswith("user-agent:") for h in headers or []):
         cmd += ["-H", f"User-Agent: {UA}"]
     for h in headers or []:
@@ -704,6 +726,121 @@ def collect_six(from_d, to_d, log):
     return events, rejected
 
 
+# ---------------- SEC Form D（美·一级市场私募申报 → funding_round） ----------------
+
+def _formd_amount(text):
+    """Form D 主文档提取 (已售金额亿$, 目标金额亿$)。原始值为美元整数（无单位词）。
+    优先 Total Amount Sold（实际成交）；新申报常为 0 → 退回 Total Offering Amount（目标）。"""
+    out = []
+    for label in (r"Total Amount Sold", r"totalAmountSold",
+                  r"Total Offering Amount", r"totalOfferingAmount"):
+        m = re.search(label + r"[\s:$]{0,80}([\d,]{7,})", text)
+        out.append(to_yi_usd(m.group(1), None) if m else None)
+    return (out[0] or out[1]) or None, (out[2] or out[3]) or None
+
+
+def collect_formd(from_d, to_d, log, max_docs=60):
+    """Form D/D-A 私募豁免申报（美国一级市场的官方全量源）→ funding_round 事件。
+
+    发现路径必须走 daily-index master.idx（EDGAR FTS 不索引 Form D，实测 2026-09-28）；
+    master.idx 仅交易日存在，非交易日/被拦（部分出口 S3 AccessDenied）自动跳过。
+    Form D 单日约 200-400 条，逐条取主文档限额 max_docs，其余留待人工/下轮。"""
+    events, rejected = [], []
+    thr = THRESHOLDS["funding_round"]
+    for dd in iter_days(from_d, to_d):
+        dt = datetime.strptime(dd, "%Y-%m-%d")
+        if dt.weekday() >= 5:  # 周末无 master.idx
+            continue
+        ymd = dd.replace("-", "")
+        idx_url = (f"https://www.sec.gov/Archives/edgar/daily-index/"
+                   f"{dt.year}/Q{(dt.month - 1) // 3 + 1}/master.{ymd}.idx")
+        raw = curl(idx_url, timeout=60)
+        time.sleep(0.4)
+        if not raw or "AccessDenied" in raw or not re.search(r"^\d{10}\|", raw, re.M):
+            log(f"  [FormD] {dd} daily-index 不可达或为空（部分出口被 S3 AccessDenied，"
+                f"换出口即可用；FTS 不索引 Form D）——跳过该日")
+            continue
+        rows = [l for l in raw.splitlines()
+                if re.match(r"\d{10}\|", l) and re.search(r"\|D(/A)?\|", l)]
+        log(f"  [FormD] {dd} Form D/D-A 申报 {len(rows)} 条（取前 {max_docs} 条主文档）")
+        fetched = 0
+        for line in rows:
+            if fetched >= max_docs:
+                break
+            parts = line.split("|")
+            if len(parts) < 5:
+                continue
+            cik, name, ftype, fdate, path = parts[0], parts[1], parts[2], parts[3], parts[4]
+            doc_url = "https://www.sec.gov/Archives/" + path
+            doc = curl(doc_url, timeout=30)
+            fetched += 1
+            time.sleep(0.25)
+            if len(doc) < 500:
+                continue
+            text = re.sub(r"&#\d+;|&[a-z]+;", " ", re.sub(r"<[^>]+>", " ", doc))
+            sold, target = _formd_amount(text)
+            amt = sold if (sold and sold >= thr) else target
+            if not amt:
+                continue
+            if amt < thr:
+                rejected.append(("funding_round", name, amt, thr))
+                continue
+            is_target = not (sold and sold >= thr)
+            events.append({
+                "event_id": f"funding_round:EDGAR:{name.replace(' ', '-')[:24]}:{dd}",
+                "event_type": "funding_round", "name": name, "name_en": name,
+                "ticker": None, "market": "私募市场(Form D)", "region": "north_america",
+                "industry": None, "announce_date": dd, "settle_date": None,
+                "status": "announced", "amount_usd": amt,
+                "news_title": f"Form D {ftype}：私募豁免申报"
+                              + ("（目标）" if is_target else "（已售金额）"),
+                "source": "SEC EDGAR Form D", "source_url": doc_url,
+                "note": ("目标募资" if is_target else "已售金额")
+                        + ("；修正申报 D/A" if ftype == "D/A" else "")
+                        + "；Reg D 私募轮",
+                "market_mic": None, "domicile_country": "US", "is_china_concept": False,
+            })
+            log(f"  [FormD] funding_round {name[:30]:32s} {amt:>8.1f} 亿$"
+                f"{'(目标)' if is_target else ''}")
+    return events, rejected
+
+
+# ---------------- 宏观 flows 快照（可达性探测 + agent 手工填数） ----------------
+
+FLOWS_SOURCES = [
+    {"series_id": "us_tic_monthly", "title": "美联储 TIC 月度跨境证券流动",
+     "url": "https://home.treasury.gov/data/treasury-international-capital-tic-system",
+     "unit": "亿美元/月"},
+    {"series_id": "jp_mof_weekly", "title": "日本财务省 周度对外/对内证券投资",
+     "url": "https://www.mof.go.jp/policy/international_policy/reference/into_invest/",
+     "unit": "亿日元/周"},
+    {"series_id": "no_gpfg_holdings", "title": "挪威 GPFG 全量持仓（季度）",
+     "url": "https://www.nbim.no/en/the-fund/market-value/", "unit": "亿美元"},
+    {"series_id": "cn_samr_simple_cases", "title": "市监总局 经营者集中简易案件公示",
+     "url": "https://www.samr.gov.cn/", "unit": None},
+]
+
+
+def collect_flows(log):
+    """宏观资本流动层：本脚本只做可达性探测与登记，数值(as_of/value)由 agent 按
+    references/sources.md F 节手工填——官方页面多为 JS 渲染，自动解析易碎，契约允许 value=null。"""
+    flows = []
+    for s in FLOWS_SOURCES:
+        try:
+            raw = curl(s["url"], timeout=15, redir=True)
+            ok = len(raw) > 1000
+        except Exception:
+            ok = False
+        time.sleep(0.5)
+        flows.append({"series_id": s["series_id"], "title": s["title"],
+                      "url": s["url"], "unit": s["unit"], "as_of": None,
+                      "value": None,
+                      "note": "可达，数值待 agent 手工填（sources.md F 节）" if ok
+                              else "本轮不可达，人工复查"})
+        log(f"  [flows] {s['series_id']:20s} {'✓可达' if ok else '✗不可达'} | {s['title']}")
+    return flows
+
+
 def main():
     exec_date = time.strftime("%Y-%m-%d")
     ap = argparse.ArgumentParser()
@@ -719,6 +856,8 @@ def main():
     ap.add_argument("--regions", default="all")
     ap.add_argument("--sources", default=None,
                     help="逗号分隔的源列表（如 cninfo,mopsov）；默认全部")
+    ap.add_argument("--flows", action="store_true",
+                    help="附带宏观资本流动快照（TIC/MOF/NBIM/SAMR 探测+登记，写入 meta.flows）")
     args = ap.parse_args()
     log = lambda m: print(m, flush=True)
 
@@ -741,6 +880,7 @@ def main():
         "hkex": collect_hkex, "cninfo": collect_cninfo, "tdnet": collect_tdnet,
         "edinet": collect_edinet, "dart": collect_dart, "mopsov": collect_mopsov,
         "kap": collect_kap, "maya": collect_maya, "cvm": collect_cvm, "six": collect_six,
+        "formd": collect_formd,
     }
     selected = ([s.strip() for s in args.sources.split(",") if s.strip()] if args.sources
                 else list(collectors))
@@ -764,9 +904,14 @@ def main():
             dedup.append(e)
     regions = ["all"] if args.regions == "all" else args.regions.split(",")
 
+    flows = collect_flows(log) if args.flows else None
+
     def dump(path, d_from, d_to, evs):
-        doc = {"meta": {"snapshot_date": d_to, "window": {"from": d_from, "to": d_to,
-                "regions": regions}, "count": len(evs)}, "events": evs}
+        meta = {"snapshot_date": d_to, "window": {"from": d_from, "to": d_to,
+                "regions": regions}, "count": len(evs)}
+        if flows is not None:
+            meta["flows"] = flows
+        doc = {"meta": meta, "events": evs}
         Path(path).write_text(json.dumps(doc, ensure_ascii=False, indent=2), encoding="utf-8")
 
     if args.out or frm == to:
