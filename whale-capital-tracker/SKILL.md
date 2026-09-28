@@ -18,7 +18,7 @@ license: PolyForm-Noncommercial-1.0.0
    - **时间窗**：**默认以日为单位**——查询日期默认=执行当日（单日窗口 `from`=`to`=该日）；补采多日时**按日切分、每天一个文件**（自上次最大查询日期次日起逐日生成），不要合并成一个大窗口；
    - **事件类型**：默认全部十九类（v1 十一类 + v2 词表八类）。
    三要素**必须原样写入产出文件的 `meta.window`**，这是产出自述口径的一部分。
-2. **读源目录**：打开 `references/sources.md`，按**事件类型**找官方渠道——本 skill 只允许列在 sources.md 里的官方源（交易所/监管披露/发行人正式公告），第三方财经媒体**只可用于交叉核对标题，不得作为数据来源**；事件判定边界查 `references/event_types.md`（21 类词表，v2 契约先纳其中八类）。
+2. **读源目录**：打开 `references/sources.md`，按**事件类型**找官方渠道——本 skill 只允许列在 sources.md 里的官方源（交易所/监管披露/发行人正式公告），第三方财经媒体**只可用于交叉核对标题，不得作为数据来源**；事件判定边界查 `references/event_types.md`（21 类词表，v2 契约先纳其中八类）；新源评估与接入路线图查 `references/catalog.md`（《全球资本动向数据源目录》，仅公开免费源）。
 3. **抓取**：首选运行 `python3 scripts/collect.py`（无参数=采集今天一天；`--date <日>` 采指定日；`--sources cninfo,mopsov` 只跑指定源；`--flows` 附宏观快照；内置 12 源：EDGAR/HKEX/巨潮/TDnet/EDINET/DART/MOPS/KAP/MAYA/CVM/SIX/**FormD**，含金额提取、门槛过滤与已知坑规避）；EDINET/DART 需免费 key（环境变量 `EDINET_KEY`/`OPENDART_KEY`，缺省自动跳过）；需要细调或新源时手写 curl，带自标识 `User-Agent`，官方源限速串行（≥300ms）；HKEX 连发会软限流（返回空），失败等 ≥1 小时再试。**Form D 发现路径只能走 daily-index master.idx**（FTS 不索引 Form D），部分出口对 daily-index 返回 AccessDenied——脚本会提示并跳过，换出口即可。
 4. **大额过滤**：打开 `references/thresholds.md`，按事件类型套用金额门槛（或"当期全球前 20"备选资格）。**门槛之下的不写入**，但在摘要里报告"过滤掉 N 笔小额"。在途/预备事件（如 S-1 已递未定价）用**目标募资额**（proposed maximum aggregate offering price）过门槛，note 标注「目标募资」；funding_round 优先 Total Amount Sold（已售金额），未售新申报用 Total Offering Amount 并标「目标募资」。
 4.5 **管线刷新（每轮必做）**：除当日/窗口内新公告外，**重扫近 90 天的在途事件**（status=announced/priced 且未 completed 的记录），更新其状态与金额——休市日、公告淡日也能产出「预备信息」：IPO 管线（已递表待上市）、待执行回购计划、已宣布未交割并购。摘要单独一行报告「在途 N 条（较上轮 ±X）」。
