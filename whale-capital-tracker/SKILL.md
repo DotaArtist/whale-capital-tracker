@@ -4,12 +4,12 @@ description: 采集全球资本流向事件记录：大额募资（IPO/增发/�
 license: PolyForm-Noncommercial-1.0.0
 ---
 
-# Whale Capital Flows · 巨鲸资本流向台账（v2.0 · 2026-09-28）
+# Whale Capital Flows · 巨鲸资本流向台账（v3.0 · 2026-09-28 发现层重构）
 
-> v2.0 基于 dotaartist/whale-capital-tracker v1 + 本地 `references/event_types.md` 词表 v0.1 扩展：
-> 新增源 SEC Form D（美国一级市场官方全量）、宏观 flows 快照层、词表八类新事件类型。
+> **v3.0 三层架构**：①**发现层（本 skill）**——官方源全量入池，核心字段=主体/类型/市场/日期/官方文档直链，金额可空；②**数值层（外置模块）**——按 source_url 取原文回填金额（PDF 解析 / Chrome 检索，SKILL 4.6），写 amount_source；③**门槛层（查询时）**——thresholds.md 门槛在查询/报告时过滤，采集期不丢弃。
+> 演进史：v1=dotaartist 原版（11 源）；v2=词表八类新类型+Form D+flows；v2.2/2.3=候选导出+浏览器回填；**v3=发现/数值/门槛三层分离**（对齐 event_types.md §5「宁可多存，报告时收紧」）。
 
-一句话：**只记大钱**。低频、大金额、构成重大新闻的公开市场与一级市场资金行为，一笔一条记录，统一格式，官方来源。
+一句话：**发现层只管把大钱的"身影"全量记下来**——主体、类型、市场、日期、官方文档直链；具体数值由外置模块（PDF 解析/浏览器检索）回填；"多大才算大钱"在查询时决定。
 
 ## 工作流（按序执行）
 
@@ -18,10 +18,11 @@ license: PolyForm-Noncommercial-1.0.0
    - **时间窗**：**默认以日为单位**——查询日期默认=执行当日（单日窗口 `from`=`to`=该日）；补采多日时**按日切分、每天一个文件**（自上次最大查询日期次日起逐日生成），不要合并成一个大窗口；
    - **事件类型**：默认全部十九类（v1 十一类 + v2 词表八类）。
    三要素**必须原样写入产出文件的 `meta.window`**，这是产出自述口径的一部分。
-2. **读源目录**：打开 `references/sources.md`，按**事件类型**找官方渠道——本 skill 只允许列在 sources.md 里的官方源（交易所/监管披露/发行人正式公告），第三方财经媒体**只可用于交叉核对标题，不得作为数据来源**；事件判定边界查 `references/event_types.md`（21 类词表，v2 契约先纳其中八类）；新源评估与接入路线图查 `references/catalog.md`（《全球资本动向数据源目录》，仅公开免费源）。
+2. **读源目录**：打开 `references/sources.md`，按**事件类型**找官方渠道——**并购/债券/IPO 三类直接查 sources.md G 节速查表**（已接入/新增监管申报源/校准分母三层）；**H 节白名单新闻源（PR Newswire/Reuters/智通/TechCrunch 等）可直接作为数据来源**（并购宣布、一级市场融资尤佳；入账规则见 H 节），非白名单媒体仅限交叉核对标题；事件判定边界查 `references/event_types.md`（21 类词表，v2 契约先纳其中八类）；新源评估与接入路线图查 `references/catalog.md`（《全球资本动向数据源目录》，仅公开免费源）。
 3. **抓取**：首选运行 `python3 scripts/collect.py`（无参数=采集今天一天；`--date <日>` 采指定日；`--sources cninfo,mopsov` 只跑指定源；`--flows` 附宏观快照；内置 12 源：EDGAR/HKEX/巨潮/TDnet/EDINET/DART/MOPS/KAP/MAYA/CVM/SIX/**FormD**，含金额提取、门槛过滤与已知坑规避）；EDINET/DART 需免费 key（环境变量 `EDINET_KEY`/`OPENDART_KEY`，缺省自动跳过）；需要细调或新源时手写 curl，带自标识 `User-Agent`，官方源限速串行（≥300ms）；HKEX 连发会软限流（返回空），失败等 ≥1 小时再试。**Form D 发现路径只能走 daily-index master.idx**（FTS 不索引 Form D），部分出口对 daily-index 返回 AccessDenied——脚本会提示并跳过，换出口即可。
-4. **大额过滤**：打开 `references/thresholds.md`，按事件类型套用金额门槛（或"当期全球前 20"备选资格）。**门槛之下的不写入**，但在摘要里报告"过滤掉 N 笔小额"。在途/预备事件（如 S-1 已递未定价）用**目标募资额**（proposed maximum aggregate offering price）过门槛，note 标注「目标募资」；funding_round 优先 Total Amount Sold（已售金额），未售新申报用 Total Offering Amount 并标「目标募资」。
+4. **全量入池（v3：不做门槛过滤）**：关键词/类型命中的公告**全部写入** daily 文件（amount_usd 可为 null=待回填；公告标题自带金额时预填并标 amount_source="title"）。**金额门槛（thresholds.md）移到查询/报告层**——用户问"最近有什么大钱在动"时，按门槛过滤 amount_usd 非空且达标的记录再报告；未回填的大额候选先走 4.6 回填。
 4.5 **管线刷新（每轮必做）**：除当日/窗口内新公告外，**重扫近 90 天的在途事件**（status=announced/priced 且未 completed 的记录），更新其状态与金额——休市日、公告淡日也能产出「预备信息」：IPO 管线（已递表待上市）、待执行回购计划、已宣布未交割并购。摘要单独一行报告「在途 N 条（较上轮 ±X）」。
+4.6 **候选回填（PDF 依赖事件的浏览器路径）**：对 `daily-*.candidates.jsonl` 中 tag=`needs_pdf_parse`/`needs_doc_parse` 的管线候选，可**用 Chrome 浏览器检索新闻填充关键信息**（不强制等 PDF 解析模块）：检索词=公司名+事件类型+日期，**优先 sources.md H 节白名单新闻源**取金额与交易要素；入账规则——event_id 按 schema 正常生成（幂等），`amount_usd` 用报道数字折算，`note` 标「浏览器检索回填（新闻源：XXX）」，`source`/`source_url` 指向官方公告，`news_title` 用官方标题；后续拿到 PDF 原文或官方披露时同 event_id 幂等更新为官方口径。
 4.7 **宏观 flows 快照（用户要宏观动向或加 `--flows` 时）**：脚本已登记 TIC/MOF/NBIM/SAMR 四序列并探测可达性（meta.flows，value=null）；**agent 按 sources.md F 节逐序列人工核对官方页后填入 `as_of` 与 `value`**，note 记口径。宏观层只进 flows 快照，不生成事件。
 5. **标准化**：打开 `references/schema.md` 逐字段映射。三条硬规则：
    - 金额统一折算**亿美元**写入 `amount_usd`（唯一金额字段）；
@@ -29,7 +30,7 @@ license: PolyForm-Noncommercial-1.0.0
    - **字段极简**：必填 12 个 + 可选 4 个，`direction`/`amount_local`/`is_major` 等可派生字段一律不存（schema.md 有派生规则），校验器会拒绝契约外字段；
    - `news_title` 填官方公告原标题（可翻译为中文并在括号保留英文原题），`source_url` 必须指向官方页面。
 6. **校验**：`python3 scripts/validate.py <产出文件>`，修到 0 错误。
-7. **交付**：**输出文件默认命名 `daily-{查询日期 YYYYMMDD}.json`**（collect.py 已内置该默认值，如 `daily-20260909.json`）。跨日窗口由脚本**自动按日切分为多个文件**——每天一个 `daily-{YYYYMMDD}.json`（无事件的空日也落一个 count=0 文件，便于对账）；只有用户显式指定 `--out` 时才合并为单文件。外加摘要（各类型笔数/金额合计、Top5 大事件、被过滤的小额统计、失败源及原因）。
+7. **交付**：**输出文件默认命名 `daily-{查询日期 YYYYMMDD}.json`**（collect.py 已内置该默认值，如 `daily-20260909.json`）。跨日窗口由脚本**自动按日切分为多个文件**——每天一个 `daily-{YYYYMMDD}.json`（无事件的空日也落一个 count=0 文件，便于对账）；只有用户显式指定 `--out` 时才合并为单文件。**v3：候选与事件统一进 daily 文件（candidates.jsonl 已停写）**，待回填记录以 amount_usd=null + note「发现模式」标识，外置模块回填后同 event_id 幂等更新。外加摘要（各类型笔数/已填金额合计/待回填条数/Top 大事件、失败源及原因）。
 
 ## 与 raising-collector 的分工（另一独立 skill，未包含在本仓库）
 
